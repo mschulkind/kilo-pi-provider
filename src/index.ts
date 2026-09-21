@@ -30,6 +30,7 @@ import {
 	refreshKiloToken,
 } from "./auth.ts";
 import { loadKiloPreferences } from "./config.ts";
+import { resolveProjectId, withProjectHeader } from "./project.ts";
 import { installCustomFooter } from "./footer.ts";
 import { streamKiloResponses } from "./responses.ts";
 import { createThemeStatusPublisher } from "./theme-status.ts";
@@ -124,10 +125,13 @@ const KILO_PROVIDER_CONFIG = {
 	},
 };
 
-function makeProviderConfig(organizationId?: string) {
+function makeProviderConfig(organizationId?: string, projectId?: string) {
 	return {
 		...KILO_PROVIDER_CONFIG,
-		headers: withOrganizationHeader(KILO_PROVIDER_CONFIG.headers, organizationId),
+		headers: withProjectHeader(
+			withOrganizationHeader(KILO_PROVIDER_CONFIG.headers, organizationId),
+			projectId,
+		),
 	};
 }
 
@@ -254,7 +258,7 @@ export default async function (pi: KiloExtensionApi) {
 	// Always register with free models. modifyModels upgrades to full list
 	// when credentials exist, and naturally falls back after logout.
 	pi.registerProvider("kilo", {
-		...makeProviderConfig(getEnvOrganizationId()),
+		...makeProviderConfig(getEnvOrganizationId(), resolveProjectId(process.cwd())),
 		models: freeModels,
 		oauth: makeOAuthConfig(),
 	});
@@ -297,9 +301,11 @@ export default async function (pi: KiloExtensionApi) {
 			return;
 		}
 		if (cachedAllModels.length > 0) {
-			// Re-register to trigger modifyModels with the cached data.
+			// Re-register to trigger modifyModels with the cached data. The project is
+			// resolved from the SESSION cwd here rather than process.cwd(): /resume can
+			// move the session to another repo, and process.cwd() is the launch dir.
 			ctx.modelRegistry.registerProvider("kilo", {
-				...makeProviderConfig(access.organizationId),
+				...makeProviderConfig(access.organizationId, resolveProjectId(ctx.cwd ?? process.cwd())),
 				models: freeModels,
 				oauth: makeOAuthConfig(),
 			});
